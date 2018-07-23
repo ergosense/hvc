@@ -1,0 +1,18 @@
+author: ergosense
+type: lib
+description: HVC-P sensor integration
+version: 1.0
+
+sources:
+  - src
+includes:
+  - include
+
+config_schema: ~
+
+libs: ~
+
+tags:
+  - ergosense
+
+manifest_version: 2017-09-29
