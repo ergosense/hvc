@@ -1,4 +1,3 @@
-#include "Arduino.h"
 #include "hvc.h"
 #include "esp_log.h"
 #include "util.h"

@@ -1,7 +1,6 @@
 #ifndef HVC_RESPONSE_H
 #define HVC_RESPONSE_H
 
-#include "Arduino.h"
 #include "util.h"
 #include "hvc.h"
 

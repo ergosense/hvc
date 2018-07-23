@@ -1,7 +1,6 @@
 #ifndef HVC_H
 #define HVC_H
 
-#include "Arduino.h"
 #include "response.h"
 
 #define SYNC_CODE 0xFE
