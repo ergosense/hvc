@@ -2,7 +2,7 @@
 #define HVC_H
 
 #include "mgos.h" // TODO get rid of this dependency
-#include "response.h"
+#include "hvc_response.h"
 
 // TODO should not be defined here
 #define HVC_UART_NUM 2
@@ -73,58 +73,29 @@
 extern "C" {
 #endif /* __cplusplus */
 
-QueueHandle_t command_queue;
-
-typedef void (*hvc_command_parser)();
-typedef void (*hvc_command_callback)(void* response);
-
-struct hvc_command
-{
-  char cmd;
-  hvc_command_parser parser;
-  void* response;
-  hvc_command_callback fn;
-};
-
 void hvc_read_bytes(char* data, int length);
 
 void hvc_write_bytes(char* data, int length);
 
-void hvc_handle_response();
+struct hvc_get_version_response* hvc_get_version();
 
-void hvc_get_version(hvc_command_callback fn);
+bool hvc_set_camera_angle(char angle);
 
-/*
-class HVC
-{
-  private:
-    Stream *port;
-    struct HvcResponseHeader retrieve_header();
-    void run_command(char cmd, int data_size, char *data, struct HvcResponse *response);
-  public:
-    HVC(Stream *port);
-    //
-    struct HvcGetVersionResponse getVersion();
-    //
-    struct HvcResponse setCameraAngle(char angle);
-    //
-    struct HvcGetCameraAngleResponse getCameraAngle();
-    //
-    struct HvcResponse setThresholdValues(int body, int hand, int face, int recognition);
-    //
-    struct HvcGetThresholdValuesResponse getThresholdValues();
-    //
-    struct HvcResponse setDetectionSize(int minBody, int maxBody, int minHand, int maxHand, int minFace, int maxFace);
-    //
-    struct HvcGetDetectionSizeResponse getDetectionSize();
-    //
-    struct HvcResponse setFaceAngle(char yaw, char roll);
-    //
-    struct HvcGetFaceAngleResponse getFaceAngle();
-    //
-    struct HvcExecutionResponse execute(int function, int image);
-};
-*/
+struct hvc_get_camera_angle_response* hvc_get_camera_angle();
+
+bool hvc_set_threshold_values(int body, int hand, int face, int recognition);
+
+struct hvc_get_threshold_values_response* hvc_get_threshold_values();
+
+bool hvc_set_detection_size(int min_body, int max_body, int min_hand, int max_hand, int min_face, int max_face);
+
+struct hvc_get_detection_size_response* hvc_get_detection_size();
+
+bool hvc_set_face_angle(char yaw, char roll);
+
+struct hvc_get_face_angle_response* hvc_get_face_angle();
+
+struct hvc_execution_response* hvc_execution(int function, int image);
 
 #ifdef __cplusplus
 }

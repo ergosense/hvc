@@ -1,4 +1,4 @@
-#include "util.h"
+#include "hvc_util.h"
 
 #define DEBUG_BUFFER_SIZE 50
 

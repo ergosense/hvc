@@ -11,6 +11,8 @@ void util_slice(char* arr, char* dest, int start, int offset);
 
 int util_bytes_to_int(char lsb, char msb);
 
+void util_int_into_lsb_msb(char* arr, int index, int val);
+
 int util_lsb(int val);
 
 int util_msb(int val);

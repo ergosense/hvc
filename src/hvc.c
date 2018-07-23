@@ -1,13 +1,12 @@
 #include <FreeRTOS.h>
 #include <task.h>
 #include "hvc.h"
+#include "hvc_util.h"
 #include "esp_log.h"
-#include "util.h"
 // TODO abstract
-
 #include "mgos.h"
+#include "mgos_uart.h"
 
-#include "hvc_parser.h"
 
 #define SEND_BUFFER_SIZE    32
 #define HEADER_BUFFER_SIZE  32
@@ -44,12 +43,12 @@ static void _hvc_retrieve_header(struct hvc_response_header* header)
   ESP_LOGI(TAG, "Header data_length: %d", header->data_length);
 }
 
-static void _hvc_run_command(struct hvc_command *cmd, int data_size, char *data)
+static void _hvc_run_command(char cmd, int data_size, char *data)
 {
   char send_data[SEND_BUFFER_SIZE];
   
-  send_data[0] = SYNC_CODE;
-  send_data[1] = cmd->cmd;
+  send_data[0] = HVC_SYNC_CODE;
+  send_data[1] = cmd;
   send_data[2] = util_lsb(data_size);
   send_data[3] = util_msb(data_size);
 
@@ -60,177 +59,181 @@ static void _hvc_run_command(struct hvc_command *cmd, int data_size, char *data)
     send_data[4 + i] = data[i];  
   }
 
+  // Execute the command
   hvc_write_bytes(send_data, CMD_SIZE + data_size);
 
-  if (xQueueSend(command_queue, cmd, 0) != pdTRUE)
+  int sleep = 0;
+
+  // Sleep for max 5 seconds waiting for data.
+  // TODO configurable please
+  while (!mgos_uart_read_avail(HVC_UART_NUM) && sleep < 5)
   {
-    LOG(LL_INFO, ("Unable to queue!"));
+    vTaskDelay(1000 / portTICK_RATE_MS);
   }
-    
-  /*
-  if (header->sync_code != SYNC_CODE) {
-    ESP_LOGE(TAG, "Header sync code invalid: %02x", header->sync_code);
+
+  // TODO come on, make this better...this is meh
+
+  // Read response headers
+  struct hvc_response_header header = {};
+
+  _hvc_retrieve_header(&header);
+
+
+  if (header.sync_code != HVC_SYNC_CODE) {
+    ESP_LOGE(TAG, "Header sync code invalid: %02x", header.sync_code);
     return;
   }
 
-  if (header->response_code != 0x00) {
-    ESP_LOGE(TAG, "Header response code invalid: %02x", header->response_code);
+  if (header.response_code != 0x00) {
+    ESP_LOGE(TAG, "Header response code invalid: %02x", header.response_code);
     return;  
   }
-  */
-
-  //response->populate(&header, this->port);
-  //this->load_data(header, response);
 }
 
-void hvc_get_version(hvc_command_callback fn)
+struct hvc_get_version_response* hvc_get_version()
 {
-  // Create the response on the heap, this response will be freed
-  // by the hvc_handle_response() code after all callbacks have been executed.
+  _hvc_run_command(HVC_CMD_GET_VERSION, 0, NULL);
 
-  // It is important to note that the response variable will not be available outside
-  // or beyond the hvc_command_callback function.
-  struct hvc_get_version_response* response = (struct hvc_get_version_response*) malloc(sizeof(struct hvc_get_version_response));
+  // Now parse
+  struct hvc_get_version_response* res = (struct hvc_get_version_response*) malloc(sizeof(struct hvc_get_version_response));
 
-  struct hvc_command cmd = {
-    HVC_CMD_GET_VERSION,
-    hvc_get_version_parser,
-    response,
-    fn
-  };
+  hvc_read_bytes(res->model, 12);
+  hvc_read_bytes((char *) &res->major_version, 1);
+  hvc_read_bytes((char *) &res->minor_version, 1);
+  hvc_read_bytes((char *) &res->release_version, 1);
+  hvc_read_bytes(res->revision, 4);
 
-  return _hvc_run_command(&cmd, 0, NULL);
+  return res;
 }
 
-void hvc_handle_response()
+bool hvc_set_camera_angle(char angle)
 {
-  struct hvc_command cmd;
-
-  if (xQueueReceive(command_queue, &cmd, 0) == pdTRUE)
-  {
-    struct hvc_response_header header = {};
-
-    // Read headers
-    _hvc_retrieve_header(&header);
-
-    if (header.sync_code != HVC_SYNC_CODE) {
-      ESP_LOGE(TAG, "Header sync code invalid: %02x", header.sync_code);
-      return;
-    }
-
-    // TODO constant
-    if (header.response_code != 0x00) {
-      ESP_LOGE(TAG, "Header response code invalid: %02x", header.response_code);
-      return;  
-    }
-
-    // Parse the object into a "known" response
-    ESP_LOGI(TAG, "Run command parser...");
-    cmd.parser(cmd.response);
-
-    // Forward the object on to the requested callback
-    ESP_LOGI(TAG, "Forward command response...");
-    cmd.fn(cmd.response);
-
-    // Release response resource
-    ESP_LOGI(TAG, "Free response malloc");
-    free(cmd.response);
-    return;
-  }
-
-  LOG(LL_ERROR, ("Unable to pop command from queue"));
-}
-
-/*
-struct HvcResponse HVC::setCameraAngle(char angle)
-{
-  HvcResponse response;
   char data[] = { angle };
-  this->run_command(CMD_SET_CAMERA_ANGLE, sizeof(data), data, &response);
-  return response;
-};
+  _hvc_run_command(HVC_CMD_SET_CAMERA_ANGLE, sizeof(data), data);
+  return true;
+}
 
-struct HvcGetCameraAngleResponse HVC::getCameraAngle()
+struct hvc_get_camera_angle_response* hvc_get_camera_angle()
 {
-  HvcGetCameraAngleResponse response;
-  this->run_command(CMD_GET_CAMERA_ANGLE, 0, NULL, &response);
-  return response;
-};
+  _hvc_run_command(HVC_CMD_GET_CAMERA_ANGLE, 0, NULL);
 
-struct HvcResponse HVC::setThresholdValues(int body, int hand, int face, int recognition)
+  struct hvc_get_camera_angle_response* res = (struct hvc_get_camera_angle_response*) malloc(sizeof(struct hvc_get_camera_angle_response));
+
+  hvc_read_bytes(&res->angle, 1);
+  return res;
+}
+
+bool hvc_set_threshold_values(int body, int hand, int face, int recognition)
 {
-  HvcResponse response;
-
   char data[8];
   util_int_into_lsb_msb(data, 0, body);
   util_int_into_lsb_msb(data, 2, hand);
   util_int_into_lsb_msb(data, 4, face);
   util_int_into_lsb_msb(data, 6, recognition);
 
-  this->run_command(CMD_SET_THRESHOLD_VALUES, sizeof(data), data, &response);
-  return response;
+  _hvc_run_command(HVC_CMD_SET_THRESHOLD_VALUES, sizeof(data), data);
+  return true;
 }
 
-struct HvcGetThresholdValuesResponse HVC::getThresholdValues()
+struct hvc_get_threshold_values_response* hvc_get_threshold_values()
 {
-  HvcGetThresholdValuesResponse response;
+  _hvc_run_command(HVC_CMD_GET_THRESHOLD_VALUES, 0, NULL);
 
-  this->run_command(CMD_GET_THRESHOLD_VALUES, 0, NULL, &response);
-  return response;
+  struct hvc_get_threshold_values_response* res = (struct hvc_get_threshold_values_response*) malloc(sizeof(struct hvc_get_threshold_values_response));
+
+  char bytes[8];
+  hvc_read_bytes(bytes, sizeof(bytes));
+  
+  res->hand = util_bytes_to_int(bytes[0], bytes[1]);
+  res->body = util_bytes_to_int(bytes[2], bytes[3]);
+  res->face = util_bytes_to_int(bytes[4], bytes[5]);
+  res->recognition = util_bytes_to_int(bytes[6], bytes[7]);
+
+  return res;  
 }
 
-struct HvcResponse HVC::setDetectionSize(int minBody, int maxBody, int minHand, int maxHand, int minFace, int maxFace)
+bool hvc_set_detection_size(int min_body, int max_body, int min_hand, int max_hand, int min_face, int max_face)
 {
-  HvcResponse response;
   char data[12];
 
-  util_int_into_lsb_msb(data, 0, minBody);
-  util_int_into_lsb_msb(data, 2, maxBody);
-  util_int_into_lsb_msb(data, 4, minHand);
-  util_int_into_lsb_msb(data, 6, maxHand);
-  util_int_into_lsb_msb(data, 8, minFace);
-  util_int_into_lsb_msb(data, 10, maxFace);
+  util_int_into_lsb_msb(data, 0, min_body);
+  util_int_into_lsb_msb(data, 2, max_body);
+  util_int_into_lsb_msb(data, 4, min_hand);
+  util_int_into_lsb_msb(data, 6, max_hand);
+  util_int_into_lsb_msb(data, 8, min_face);
+  util_int_into_lsb_msb(data, 10, max_face);
+
+  _hvc_run_command(HVC_CMD_SET_DETECTION_SIZE, sizeof(data), data);
+  return true; 
+}
+
+struct hvc_get_detection_size_response* hvc_get_detection_size()
+{
+  _hvc_run_command(HVC_CMD_GET_DETECTION_SIZE, 0, NULL);
+
+  struct hvc_get_detection_size_response* res = (struct hvc_get_detection_size_response*) malloc(sizeof(struct hvc_get_detection_size_response));
+
+  char bytes[12];
+  hvc_read_bytes(bytes, sizeof(bytes));
   
-  this->run_command(CMD_SET_DETECTION_SIZE, sizeof(data), data, &response);
-  return response;
+  res->min_body = util_bytes_to_int(bytes[0], bytes[1]);
+  res->max_body = util_bytes_to_int(bytes[2], bytes[3]);
+  res->min_hand = util_bytes_to_int(bytes[4], bytes[5]);
+  res->max_hand = util_bytes_to_int(bytes[6], bytes[7]);
+  res->min_face = util_bytes_to_int(bytes[8], bytes[9]);
+  res->max_face = util_bytes_to_int(bytes[10], bytes[11]);
+
+  return res;
 }
 
-struct HvcGetDetectionSizeResponse HVC::getDetectionSize()
+bool hvc_set_face_angle(char yaw, char roll)
 {
-  HvcGetDetectionSizeResponse response;
-  this->run_command(CMD_GET_DETECTION_SIZE, 0, NULL, &response);
-  return response;
-}
-
-struct HvcResponse HVC::setFaceAngle(char yaw, char roll)
-{
-  HvcResponse response;
   char data[2];
   data[0] = yaw;
   data[1] = roll;
-  
-  this->run_command(CMD_SET_FACE_ANGLE, sizeof(data), data, &response);
-  return response;
+
+  _hvc_run_command(HVC_CMD_SET_FACE_ANGLE, sizeof(data), data);
+  return true;
 }
 
-struct HvcGetFaceAngleResponse HVC::getFaceAngle()
+struct hvc_get_face_angle_response* hvc_get_face_angle()
 {
-  HvcGetFaceAngleResponse response;
-  this->run_command(CMD_GET_FACE_ANGLE, 0, NULL, &response);
-  return response;
+  _hvc_run_command(HVC_CMD_GET_FACE_ANGLE, 0, NULL);
+
+  struct hvc_get_face_angle_response* res = (struct hvc_get_face_angle_response*) malloc(sizeof(struct hvc_get_face_angle_response));
+
+  hvc_read_bytes(&res->yaw, 1);
+  hvc_read_bytes(&res->roll, 1);
+
+  return res;
 }
 
-struct HvcExecutionResponse HVC::execute(int function, int imageByte)
+struct hvc_execution_response* hvc_execution(int function, int image)
 {
-  HvcExecutionResponse response;
   char data[3];
   data[0] = (function & 0xFF);
   data[1] = ((function >> 8) & 0xFF);
-  data[2] = (imageByte & 0xFF);
+  data[2] = (0 & 0xFF); // TODO no images for now
+
+  _hvc_run_command(HVC_CMD_EXECUTE, sizeof(data), data);
   
-  this->run_command(CMD_EXECUTE, sizeof(data), data, &response);
-  return response; 
+  struct hvc_execution_response* res = (struct hvc_execution_response*) malloc(sizeof(struct hvc_execution_response));
+
+  char header[4];
+  hvc_read_bytes(header, sizeof(header));
+
+  res->body_count = header[0];
+  res->hand_count = header[1];
+  res->face_count = header[2];
+  // header[3] reserved and unused
+
+  // Empty out the read buffer. TODO perhaps we can use flush?
+  char c;
+
+  while (mgos_uart_read_avail(HVC_UART_NUM))
+  {
+    hvc_read_bytes(&c, 1);
+  }
+
+  return res;
 }
-
-
-*/

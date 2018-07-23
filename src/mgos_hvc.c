@@ -6,30 +6,7 @@
 #include "mgos_hvc.h"
 #include "mgos_uart.h"
 #include "hvc.h"
-
-static void _mgos_hvc_debug_function(void* response)
-{
-  struct hvc_get_version_response* res = (struct hvc_get_version_response*) response;
-
-  LOG(LL_INFO, ("AT RESPONSE"));
-  LOG(LL_INFO, ("AT %s", util_terminate_string(res->model, 12)));
-  LOG(LL_INFO, ("AT %d", res->major_version));
-  LOG(LL_INFO, ("AT %d", res->minor_version));
-  LOG(LL_INFO, ("AT %d", res->release_version));
-  LOG(LL_INFO, ("Revision: %02x%02x%02x%02x", res->revision[0], res->revision[1], res->revision[2], res->revision[3]));
-}
-
-static void _mgos_hvc_uart_dispatcher(int uart_no, void *arg) {
-
-  // Read available bytes
-  int avail = mgos_uart_read_avail(uart_no);
-
-  if (avail)
-  {
-    LOG(LL_INFO, ("Available bytes found %d", avail));
-    hvc_handle_response();
-  }
-}
+#include "hvc_response.h"
 
 /*
  * Mongoose OS specific implementation of the write function
@@ -63,6 +40,36 @@ void hvc_write_bytes(char* data, int length)
   }
 }
 
+static void _hvc_setup()
+{
+  // Read the version
+  struct hvc_get_version_response* version = hvc_get_version();
+  LOG(LL_INFO, ("HVC Version: %d.%d", version->major_version, version->minor_version));
+
+  // Configure the HVC component with values read from config
+  hvc_set_camera_angle(HVC_CAMERA_ANGLE_0);
+  hvc_set_threshold_values(600, 500, 500, 500);
+  hvc_set_detection_size(30, 8192, 40, 8192, 60, 8192);
+  hvc_set_face_angle(HVC_YAW_ANGLE_30, HVC_ROLL_ANGLE_15);
+
+  // We shouldn't have to read the values here unless. Failures will
+  // be listed in the logs.
+
+  // TODO reboot device if we can't initialize HVC correctly
+
+  while(1)
+  {
+    struct hvc_execution_response* res = hvc_execution(HVC_EX_BODY_DETECTION | HVC_EX_FACE_DETECTION, HVC_EX_IMAGE_NONE);
+
+    LOG(LL_INFO, ("Execution Result: %d/%d", res->body_count, res->face_count));
+
+    // TODO use configurable interval
+    vTaskDelay(1000 / portTICK_RATE_MS);
+  }
+
+  vTaskDelete(NULL);
+}
+
 void mgos_hvc_init()
 {
   struct mgos_uart_config ucfg;
@@ -82,12 +89,7 @@ void mgos_hvc_init()
   // Enable receiving data
   mgos_uart_set_rx_enabled(HVC_UART_NUM, true);
 
-  // Set MGOS UART handler
-  mgos_uart_set_dispatcher(HVC_UART_NUM, _mgos_hvc_uart_dispatcher, NULL);
-
-  // TODO this should be somewhere else
-  command_queue = xQueueCreate(10, sizeof(struct hvc_command));
-
-  // Initialize
-  hvc_get_version(_mgos_hvc_debug_function);
+  // Run setup task in different vTask since we don't want to block
+  // the UART task from pushing and pulling from the socket.
+  xTaskCreate(&_hvc_setup, "_hvc_setup", 10000, NULL, 1, NULL);
 }
