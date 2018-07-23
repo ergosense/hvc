@@ -1,6 +1,13 @@
+#include <FreeRTOS.h>
+#include <task.h>
 #include "hvc.h"
 #include "esp_log.h"
 #include "util.h"
+// TODO abstract
+
+#include "mgos.h"
+
+#include "hvc_parser.h"
 
 #define SEND_BUFFER_SIZE    32
 #define HEADER_BUFFER_SIZE  32
@@ -21,81 +28,120 @@
  * 6: GND
  */
 
-static const char *TAG = "HVC";
 
-HVC::HVC(Stream *p)
+static const char *TAG = "hvc";
+
+static void _hvc_retrieve_header(struct hvc_response_header* header)
 {
-  port = p;
-};
+  ESP_LOGI(TAG, "Read response header");
 
-struct HvcResponseHeader HVC::retrieve_header()
-{
-  char header_buffer[HEADER_BUFFER_SIZE];
-  HvcResponseHeader header;
+  hvc_read_bytes(&header->sync_code, 1);
+  hvc_read_bytes(&header->response_code, 1);
+  hvc_read_bytes(header->data_length_bytes, 4);
   
-  int bytesRead = port->readBytes(header_buffer, HEADER_SIZE);
-  ESP_LOGD(TAG, "Bytes read for response headers: %d/%d", bytesRead, HEADER_SIZE);
-  ESP_LOGI(TAG, "Header response: %s", Util::hexArrayToString(header_buffer, bytesRead));
-  
-  memmove(&header, header_buffer, HEADER_SIZE);
-  ESP_LOGD(TAG, "Discovered data length: %d", header.data_length);
-  
-  return header;
-};
+  ESP_LOGI(TAG, "Header sync_code: %02x", header->sync_code);
+  ESP_LOGI(TAG, "Header response_code: %02x", header->response_code);
+  ESP_LOGI(TAG, "Header data_length: %d", header->data_length);
+}
 
-/*
-void HVC::load_data(struct ResponseHeader header, struct Response *response)
-{
-  char data_buffer[DATA_BUFFER_SIZE];
-  
-  int bytesRead = port->readBytes(data_buffer, header.data_length);
-  ESP_LOGD(TAG, "Bytes read for response data: %d/%d", bytesRead, header.data_length);
-  ESP_LOGI(TAG, "Command response: %s", Util::hexArrayToString(data_buffer, bytesRead));
-
-  response->populateFromBytes(header, data_buffer);
-};
-*/
-
-void HVC::run_command(char cmd, int data_size, char *data, struct HvcResponse *response)
+static void _hvc_run_command(struct hvc_command *cmd, int data_size, char *data)
 {
   char send_data[SEND_BUFFER_SIZE];
   
   send_data[0] = SYNC_CODE;
-  send_data[1] = cmd;
-  send_data[2] = Util::LSB(data_size);
-  send_data[3] = Util::MSB(data_size);
+  send_data[1] = cmd->cmd;
+  send_data[2] = util_lsb(data_size);
+  send_data[3] = util_msb(data_size);
+
+  ESP_LOGI(TAG, "Executing command (first 4 bytes): %02x%02x%02x%02x", send_data[0], send_data[1], send_data[2], send_data[3]);
 
   for (int i = 0; i < data_size; i++)
   {
     send_data[4 + i] = data[i];  
   }
-  
-  ESP_LOGI(TAG, "Executing command: %s", Util::hexArrayToString(send_data, CMD_SIZE + data_size));
-  port->write(send_data, CMD_SIZE + data_size);
-  
-  HvcResponseHeader header = this->retrieve_header();
-  
-  if (header.sync_code != SYNC_CODE) {
-    ESP_LOGE(TAG, "Header sync code invalid: %02x", header.sync_code);
+
+  hvc_write_bytes(send_data, CMD_SIZE + data_size);
+
+  if (xQueueSend(command_queue, cmd, 0) != pdTRUE)
+  {
+    LOG(LL_INFO, ("Unable to queue!"));
+  }
+    
+  /*
+  if (header->sync_code != SYNC_CODE) {
+    ESP_LOGE(TAG, "Header sync code invalid: %02x", header->sync_code);
     return;
   }
 
-  if (header.responseCode != 0x00) {
-    ESP_LOGE(TAG, "Header response code invalid: %02x", header.responseCode);
+  if (header->response_code != 0x00) {
+    ESP_LOGE(TAG, "Header response code invalid: %02x", header->response_code);
     return;  
   }
+  */
 
-  response->populate(&header, this->port);
+  //response->populate(&header, this->port);
   //this->load_data(header, response);
-};
+}
 
-struct HvcGetVersionResponse HVC::getVersion()
+void hvc_get_version(hvc_command_callback fn)
 {
-  HvcGetVersionResponse response;
-  this->run_command(CMD_GET_VERSION, 0, NULL, &response);
-  return response;
-};
+  // Create the response on the heap, this response will be freed
+  // by the hvc_handle_response() code after all callbacks have been executed.
 
+  // It is important to note that the response variable will not be available outside
+  // or beyond the hvc_command_callback function.
+  struct hvc_get_version_response* response = (struct hvc_get_version_response*) malloc(sizeof(struct hvc_get_version_response));
+
+  struct hvc_command cmd = {
+    HVC_CMD_GET_VERSION,
+    hvc_get_version_parser,
+    response,
+    fn
+  };
+
+  return _hvc_run_command(&cmd, 0, NULL);
+}
+
+void hvc_handle_response()
+{
+  struct hvc_command cmd;
+
+  if (xQueueReceive(command_queue, &cmd, 0) == pdTRUE)
+  {
+    struct hvc_response_header header = {};
+
+    // Read headers
+    _hvc_retrieve_header(&header);
+
+    if (header.sync_code != HVC_SYNC_CODE) {
+      ESP_LOGE(TAG, "Header sync code invalid: %02x", header.sync_code);
+      return;
+    }
+
+    // TODO constant
+    if (header.response_code != 0x00) {
+      ESP_LOGE(TAG, "Header response code invalid: %02x", header.response_code);
+      return;  
+    }
+
+    // Parse the object into a "known" response
+    ESP_LOGI(TAG, "Run command parser...");
+    cmd.parser(cmd.response);
+
+    // Forward the object on to the requested callback
+    ESP_LOGI(TAG, "Forward command response...");
+    cmd.fn(cmd.response);
+
+    // Release response resource
+    ESP_LOGI(TAG, "Free response malloc");
+    free(cmd.response);
+    return;
+  }
+
+  LOG(LL_ERROR, ("Unable to pop command from queue"));
+}
+
+/*
 struct HvcResponse HVC::setCameraAngle(char angle)
 {
   HvcResponse response;
@@ -116,10 +162,10 @@ struct HvcResponse HVC::setThresholdValues(int body, int hand, int face, int rec
   HvcResponse response;
 
   char data[8];
-  Util::intIntoLSBMSB(data, 0, body);
-  Util::intIntoLSBMSB(data, 2, hand);
-  Util::intIntoLSBMSB(data, 4, face);
-  Util::intIntoLSBMSB(data, 6, recognition);
+  util_int_into_lsb_msb(data, 0, body);
+  util_int_into_lsb_msb(data, 2, hand);
+  util_int_into_lsb_msb(data, 4, face);
+  util_int_into_lsb_msb(data, 6, recognition);
 
   this->run_command(CMD_SET_THRESHOLD_VALUES, sizeof(data), data, &response);
   return response;
@@ -138,12 +184,12 @@ struct HvcResponse HVC::setDetectionSize(int minBody, int maxBody, int minHand, 
   HvcResponse response;
   char data[12];
 
-  Util::intIntoLSBMSB(data, 0, minBody);
-  Util::intIntoLSBMSB(data, 2, maxBody);
-  Util::intIntoLSBMSB(data, 4, minHand);
-  Util::intIntoLSBMSB(data, 6, maxHand);
-  Util::intIntoLSBMSB(data, 8, minFace);
-  Util::intIntoLSBMSB(data, 10, maxFace);
+  util_int_into_lsb_msb(data, 0, minBody);
+  util_int_into_lsb_msb(data, 2, maxBody);
+  util_int_into_lsb_msb(data, 4, minHand);
+  util_int_into_lsb_msb(data, 6, maxHand);
+  util_int_into_lsb_msb(data, 8, minFace);
+  util_int_into_lsb_msb(data, 10, maxFace);
   
   this->run_command(CMD_SET_DETECTION_SIZE, sizeof(data), data, &response);
   return response;
@@ -187,3 +233,4 @@ struct HvcExecutionResponse HVC::execute(int function, int imageByte)
 }
 
 
+*/

@@ -3,8 +3,9 @@
 #include "esp_log.h"
 #include "hvc.h"
 
-static const char *TAG = "HVC-RESPONSE";
+//static const char *TAG = "HVC-RESPONSE";
 
+/*
 void HvcResponse::populate(HvcResponseHeader *header, Stream *port)
 {
   this->header = header;
@@ -61,7 +62,7 @@ void HvcGetVersionResponse::extract(Stream *port)
 
 void HvcGetVersionResponse::dump()
 {
-  ESP_LOGD(TAG, "Model: %s", Util::terminatedString(this->model, 12));
+  ESP_LOGD(TAG, "Model: %s", util_terminate_string(this->model, 12));
   ESP_LOGD(TAG, "Major Version: %d", this->majorVersion);
   ESP_LOGD(TAG, "Minor Version: %d", this->minorVersion);
   ESP_LOGD(TAG, "Release Version: %d", this->releaseVersion);
@@ -83,10 +84,10 @@ void HvcGetThresholdValuesResponse::extract(Stream *port)
   char bytes[8];
   int read = port->readBytes(bytes, sizeof(bytes));
   
-  this->hand = Util::bytesToInt(bytes[0], bytes[1]);
-  this->body = Util::bytesToInt(bytes[2], bytes[3]);
-  this->face = Util::bytesToInt(bytes[4], bytes[5]);
-  this->recognition = Util::bytesToInt(bytes[6], bytes[7]);
+  this->hand = util_bytes_to_int(bytes[0], bytes[1]);
+  this->body = util_bytes_to_int(bytes[2], bytes[3]);
+  this->face = util_bytes_to_int(bytes[4], bytes[5]);
+  this->recognition = util_bytes_to_int(bytes[6], bytes[7]);
   
   //ESP_LOGE("Header provided data length does not match read bytes: %d/%d", 5, read);
 };
@@ -101,12 +102,12 @@ void HvcGetDetectionSizeResponse::extract(Stream *port)
   char bytes[12];
   int read = port->readBytes(bytes, sizeof(bytes));
   
-  this->minBody = Util::bytesToInt(bytes[0], bytes[1]);
-  this->maxBody = Util::bytesToInt(bytes[2], bytes[3]);
-  this->minHand = Util::bytesToInt(bytes[4], bytes[5]);
-  this->maxHand = Util::bytesToInt(bytes[6], bytes[7]);
-  this->minFace = Util::bytesToInt(bytes[8], bytes[9]);
-  this->maxFace = Util::bytesToInt(bytes[10], bytes[11]);
+  this->minBody = util_bytes_to_int(bytes[0], bytes[1]);
+  this->maxBody = util_bytes_to_int(bytes[2], bytes[3]);
+  this->minHand = util_bytes_to_int(bytes[4], bytes[5]);
+  this->maxHand = util_bytes_to_int(bytes[6], bytes[7]);
+  this->minFace = util_bytes_to_int(bytes[8], bytes[9]);
+  this->maxFace = util_bytes_to_int(bytes[10], bytes[11]);
   
   //ESP_LOGE("Header provided data length does not match read bytes: %d/%d", 5, read);
 };
@@ -157,3 +158,4 @@ void HvcExecutionResponse::dump()
   ESP_LOGD(TAG, "Image Size: %d x %d", this->imageWidth, this->imageHeight);
 };
 
+*/

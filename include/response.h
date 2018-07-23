@@ -1,25 +1,35 @@
 #ifndef HVC_RESPONSE_H
 #define HVC_RESPONSE_H
 
+#include <stdint.h>
 #include "util.h"
-#include "hvc.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
 
-struct HvcResponseHeader
+struct hvc_response_header
 {
   char sync_code;
-  char responseCode;
+  char response_code;
 
   union
   {
     char data_length_bytes[4];
     int data_length;
-  } __attribute__((packed));
+  };
 };
 
+struct hvc_get_version_response
+{
+  char model[12];
+  uint8_t major_version;
+  uint8_t minor_version;
+  uint8_t release_version;
+  char revision[4];
+};
+
+/*
 struct HvcResponse
 {
   int bytesToRead;
@@ -106,6 +116,7 @@ struct HvcExecutionResponse:HvcResponse
     void extract(Stream *port);
     void dump();
 };
+*/
 
 #ifdef __cplusplus
 }

@@ -4,37 +4,18 @@
 
 char debug_buffer[DEBUG_BUFFER_SIZE];
 
-void clear_debug_buffer()
+char* util_terminate_string(char *arr, int arr_size)
 {
-  memset(debug_buffer, 0, DEBUG_BUFFER_SIZE);   
-};
-
-char* Util::hexArrayToString(char * arr, int arr_size)
-{
-  clear_debug_buffer();
-
   for (int i = 0; i < arr_size; i++)
-  {
-    sprintf(debug_buffer + (i * 2), "%02x", arr[i]);
-  }
-
-  return debug_buffer;
-};
-
-char* Util::terminatedString(char *arr, int arrSize)
-{
-  clear_debug_buffer();
-
-  for (int i = 0; i < arrSize; i++)
   {
     debug_buffer[i] = arr[i];
   }
 
-  debug_buffer[arrSize] = '\0';
+  debug_buffer[arr_size] = '\0';
   return debug_buffer;
 }
 
-void Util::slice(char *arr, char *dest, int start, int offset)
+void util_slice(char *arr, char *dest, int start, int offset)
 {
   for (int i = start; i < start + offset; i++)
   {
@@ -42,23 +23,23 @@ void Util::slice(char *arr, char *dest, int start, int offset)
   }
 }
 
-int Util::bytesToInt(char lsb, char msb)
+int util_bytes_to_int(char lsb, char msb)
 {
   return lsb + (msb << 8);
 }
 
-void Util::intIntoLSBMSB(char* arr, int index, int val)
+void util_int_into_lsb_msb(char* arr, int index, int val)
 {
-  arr[index] = Util::LSB(val);
-  arr[index + 1] = Util::MSB(val);
+  arr[index] = util_lsb(val);
+  arr[index + 1] = util_msb(val);
 }
 
-int Util::LSB(int val)
+int util_lsb(int val)
 {
   return (val & 0xFF); 
 }
 
-int Util::MSB(int val)
+int util_msb(int val)
 {
   return ((val >> 8) & 0xFF);
 }
