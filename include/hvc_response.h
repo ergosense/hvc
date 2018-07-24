@@ -1,26 +1,14 @@
 #ifndef HVC_RESPONSE_H
 #define HVC_RESPONSE_H
 
-#include <stdint.h>
-#include "hvc_util.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
 
+#include <stdint.h>
+#include "hvc_util.h"
+
 // TODO use uint8_t instead int
-
-struct hvc_response_header
-{
-  char sync_code;
-  char response_code;
-
-  union
-  {
-    char data_length_bytes[4];
-    int data_length;
-  };
-};
 
 struct hvc_get_version_response
 {

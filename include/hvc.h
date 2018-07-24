@@ -1,7 +1,10 @@
 #ifndef HVC_H
 #define HVC_H
 
-#include "mgos.h" // TODO get rid of this dependency
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
 #include "hvc_response.h"
 
 // TODO should not be defined here
@@ -69,13 +72,25 @@
 #define HVC_CMD_SET_FACE_ANGLE        0x09
 #define HVC_CMD_GET_FACE_ANGLE        0x0A
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
+// Retry definitions
+#define HVC_READ_RETRY_SLEEP    1000
+#define HVC_DEFAULT_READ_RETRY  5
+
+extern int hvc_read_retry;
+
+void hvc_log_debug(const char* format, ...);
+
+void hvc_log_info(const char* format, ...);
+
+void hvc_log_error(const char* format, ...);
 
 void hvc_read_bytes(char* data, int length);
 
 void hvc_write_bytes(char* data, int length);
+
+int hvc_read_bytes_available();
+
+void hvc_set_retry(int retry);
 
 struct hvc_get_version_response* hvc_get_version();
 

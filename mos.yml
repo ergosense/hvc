@@ -8,7 +8,22 @@ sources:
 includes:
   - include
 
-config_schema: ~
+config_schema:
+  - [ "hvc", "o", { "title": "HVC settings" }]
+  - [ "hvc.baudrate", "i", 921600, { "title": "Connection baudrate" }]
+  - [ "hvc.camera_angle", "i", 0, { "title": "Camera angle (default 0 degrees)" }]
+  - [ "hvc.thresholds", "o", { "title": "Threshold settings" }]
+  - [ "hvc.thresholds.body", i, 600, { "title": "Body threshold" }]
+  - [ "hvc.thresholds.hand", i, 500, { "title": "Hand threshold" }]
+  - [ "hvc.thresholds.face", i, 500, { "title": "Face threshold" }]
+  - [ "hvc.thresholds.recognition", i, 500, { "title": "Recognintion threshold" }]
+  - [ "hvc.detection_size", "o", { "title": "Detection settings" }]
+  - [ "hvc.detection_size.min_body", i, 30, { "title": "Minimum body size" }]
+  - [ "hvc.detection_size.max_body", i, 8192, { "title": "Maximum body size" }]
+  - [ "hvc.detection_size.min_hand", i, 40, { "title": "Minimum hand size" }]
+  - [ "hvc.detection_size.max_hand", i, 8192, { "title": "Maximum hand size" }]
+  - [ "hvc.detection_size.min_face", i, 60, { "title": "Minimum face size" }]
+  - [ "hvc.detection_size.max_face", i, 8192, { "title": "Maximum face size" }]
 
 libs: ~
 

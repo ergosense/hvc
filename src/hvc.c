@@ -2,12 +2,8 @@
 #include <task.h>
 #include "hvc.h"
 #include "hvc_util.h"
-#include "esp_log.h"
-// TODO abstract
-#include "mgos.h"
-#include "mgos_uart.h"
 
-
+// TODO fix all these assignments
 #define SEND_BUFFER_SIZE    32
 #define HEADER_BUFFER_SIZE  32
 #define DATA_BUFFER_SIZE    64
@@ -27,23 +23,10 @@
  * 6: GND
  */
 
+// Default to 5 retries
+int hvc_read_retry = HVC_DEFAULT_READ_RETRY;
 
-static const char *TAG = "hvc";
-
-static void _hvc_retrieve_header(struct hvc_response_header* header)
-{
-  ESP_LOGI(TAG, "Read response header");
-
-  hvc_read_bytes(&header->sync_code, 1);
-  hvc_read_bytes(&header->response_code, 1);
-  hvc_read_bytes(header->data_length_bytes, 4);
-  
-  ESP_LOGI(TAG, "Header sync_code: %02x", header->sync_code);
-  ESP_LOGI(TAG, "Header response_code: %02x", header->response_code);
-  ESP_LOGI(TAG, "Header data_length: %d", header->data_length);
-}
-
-static void _hvc_run_command(char cmd, int data_size, char *data)
+static bool _hvc_run_command(char cmd, int data_size, char *data)
 {
   char send_data[SEND_BUFFER_SIZE];
   
@@ -52,7 +35,7 @@ static void _hvc_run_command(char cmd, int data_size, char *data)
   send_data[2] = util_lsb(data_size);
   send_data[3] = util_msb(data_size);
 
-  ESP_LOGI(TAG, "Executing command (first 4 bytes): %02x%02x%02x%02x", send_data[0], send_data[1], send_data[2], send_data[3]);
+  hvc_log_info("Executing command (first 4 bytes): %02x%02x%02x%02x", send_data[0], send_data[1], send_data[2], send_data[3]);
 
   for (int i = 0; i < data_size; i++)
   {
@@ -62,37 +45,66 @@ static void _hvc_run_command(char cmd, int data_size, char *data)
   // Execute the command
   hvc_write_bytes(send_data, CMD_SIZE + data_size);
 
-  int sleep = 0;
+  // Sleep briefly to let data arrive
+  vTaskDelay(100 / portTICK_RATE_MS);
 
-  // Sleep for max 5 seconds waiting for data.
-  // TODO configurable please
-  while (!mgos_uart_read_avail(HVC_UART_NUM) && sleep < 5)
+  int sleep = 0;
+  int avail = 0;
+
+  // Sleep for max X seconds waiting for data.
+  while (!(avail = hvc_read_bytes_available()) && sleep < hvc_read_retry)
   {
-    vTaskDelay(1000 / portTICK_RATE_MS);
+    hvc_log_debug("Sleeping HVC thread until data arrives...");
+    sleep++;
+
+    vTaskDelay(HVC_READ_RETRY_SLEEP / portTICK_RATE_MS);
   }
 
-  // TODO come on, make this better...this is meh
+  // Read buffer has nothing for us, this is unexpected. The HVC
+  // might be unavailable at this point.
+  if (!avail)
+  {
+    hvc_log_error("Unable to find any data in the read buffer.");
+    return false;
+  }
 
   // Read response headers
-  struct hvc_response_header header = {};
+  hvc_log_debug("Reading response header...");
 
-  _hvc_retrieve_header(&header);
+  char sync_code;
+  char response_code;
+  char data_length_bytes[4];
 
+  hvc_read_bytes(&sync_code, 1);
+  hvc_read_bytes(&response_code, 1);
 
-  if (header.sync_code != HVC_SYNC_CODE) {
-    ESP_LOGE(TAG, "Header sync code invalid: %02x", header.sync_code);
-    return;
+  // Not used at this point
+  hvc_read_bytes(data_length_bytes, 4);
+  
+  hvc_log_debug("Header sync_code: %02x", sync_code);
+  hvc_log_debug("Header response_code: %02x", response_code);
+
+  if (sync_code != HVC_SYNC_CODE) {
+    hvc_log_error("Header sync code invalid: %02x", sync_code);
+    return false;
   }
 
-  if (header.response_code != 0x00) {
-    ESP_LOGE(TAG, "Header response code invalid: %02x", header.response_code);
-    return;  
+  if (response_code != 0x00) {
+    hvc_log_error("Header response code invalid: %02x", response_code);
+    return false;  
   }
+
+  return true;
+}
+
+void hvc_set_retry(int retry)
+{
+  hvc_read_retry = retry;
 }
 
 struct hvc_get_version_response* hvc_get_version()
 {
-  _hvc_run_command(HVC_CMD_GET_VERSION, 0, NULL);
+  if (!_hvc_run_command(HVC_CMD_GET_VERSION, 0, NULL)) return NULL;
 
   // Now parse
   struct hvc_get_version_response* res = (struct hvc_get_version_response*) malloc(sizeof(struct hvc_get_version_response));
@@ -108,14 +120,22 @@ struct hvc_get_version_response* hvc_get_version()
 
 bool hvc_set_camera_angle(char angle)
 {
+  // Do some validation, ensure camera angle within bounds
+  if (angle > HVC_CAMERA_ANGLE_270)
+  {
+    hvc_log_debug("Angle out of range, setting to 0 degrees. (%d)", angle);
+    angle = HVC_CAMERA_ANGLE_0;
+  }
+
+  hvc_log_info("Setting HVC camera angle -> %d", angle);
+
   char data[] = { angle };
-  _hvc_run_command(HVC_CMD_SET_CAMERA_ANGLE, sizeof(data), data);
-  return true;
+  return _hvc_run_command(HVC_CMD_SET_CAMERA_ANGLE, sizeof(data), data);
 }
 
 struct hvc_get_camera_angle_response* hvc_get_camera_angle()
 {
-  _hvc_run_command(HVC_CMD_GET_CAMERA_ANGLE, 0, NULL);
+  if (!_hvc_run_command(HVC_CMD_GET_CAMERA_ANGLE, 0, NULL)) return NULL;
 
   struct hvc_get_camera_angle_response* res = (struct hvc_get_camera_angle_response*) malloc(sizeof(struct hvc_get_camera_angle_response));
 
@@ -125,19 +145,20 @@ struct hvc_get_camera_angle_response* hvc_get_camera_angle()
 
 bool hvc_set_threshold_values(int body, int hand, int face, int recognition)
 {
+  hvc_log_info("Setting HVC threshold values -> %d/%d/%d/%d", body, hand, face, recognition);
+
   char data[8];
   util_int_into_lsb_msb(data, 0, body);
   util_int_into_lsb_msb(data, 2, hand);
   util_int_into_lsb_msb(data, 4, face);
   util_int_into_lsb_msb(data, 6, recognition);
 
-  _hvc_run_command(HVC_CMD_SET_THRESHOLD_VALUES, sizeof(data), data);
-  return true;
+  return _hvc_run_command(HVC_CMD_SET_THRESHOLD_VALUES, sizeof(data), data);
 }
 
 struct hvc_get_threshold_values_response* hvc_get_threshold_values()
 {
-  _hvc_run_command(HVC_CMD_GET_THRESHOLD_VALUES, 0, NULL);
+  if (!_hvc_run_command(HVC_CMD_GET_THRESHOLD_VALUES, 0, NULL)) return NULL;
 
   struct hvc_get_threshold_values_response* res = (struct hvc_get_threshold_values_response*) malloc(sizeof(struct hvc_get_threshold_values_response));
 
@@ -154,6 +175,8 @@ struct hvc_get_threshold_values_response* hvc_get_threshold_values()
 
 bool hvc_set_detection_size(int min_body, int max_body, int min_hand, int max_hand, int min_face, int max_face)
 {
+  hvc_log_info("Setting HVC detection size -> %d-%d/%d-%d/%d-%d", min_body, max_body, min_hand, max_hand, min_face, max_face);
+
   char data[12];
 
   util_int_into_lsb_msb(data, 0, min_body);
@@ -163,13 +186,12 @@ bool hvc_set_detection_size(int min_body, int max_body, int min_hand, int max_ha
   util_int_into_lsb_msb(data, 8, min_face);
   util_int_into_lsb_msb(data, 10, max_face);
 
-  _hvc_run_command(HVC_CMD_SET_DETECTION_SIZE, sizeof(data), data);
-  return true; 
+  return _hvc_run_command(HVC_CMD_SET_DETECTION_SIZE, sizeof(data), data);
 }
 
 struct hvc_get_detection_size_response* hvc_get_detection_size()
 {
-  _hvc_run_command(HVC_CMD_GET_DETECTION_SIZE, 0, NULL);
+  if (!_hvc_run_command(HVC_CMD_GET_DETECTION_SIZE, 0, NULL)) return NULL;
 
   struct hvc_get_detection_size_response* res = (struct hvc_get_detection_size_response*) malloc(sizeof(struct hvc_get_detection_size_response));
 
@@ -192,13 +214,12 @@ bool hvc_set_face_angle(char yaw, char roll)
   data[0] = yaw;
   data[1] = roll;
 
-  _hvc_run_command(HVC_CMD_SET_FACE_ANGLE, sizeof(data), data);
-  return true;
+  return _hvc_run_command(HVC_CMD_SET_FACE_ANGLE, sizeof(data), data);
 }
 
 struct hvc_get_face_angle_response* hvc_get_face_angle()
 {
-  _hvc_run_command(HVC_CMD_GET_FACE_ANGLE, 0, NULL);
+  if (!_hvc_run_command(HVC_CMD_GET_FACE_ANGLE, 0, NULL)) return NULL;
 
   struct hvc_get_face_angle_response* res = (struct hvc_get_face_angle_response*) malloc(sizeof(struct hvc_get_face_angle_response));
 
@@ -215,7 +236,7 @@ struct hvc_execution_response* hvc_execution(int function, int image)
   data[1] = ((function >> 8) & 0xFF);
   data[2] = (0 & 0xFF); // TODO no images for now
 
-  _hvc_run_command(HVC_CMD_EXECUTE, sizeof(data), data);
+  if (!_hvc_run_command(HVC_CMD_EXECUTE, sizeof(data), data)) return NULL;
   
   struct hvc_execution_response* res = (struct hvc_execution_response*) malloc(sizeof(struct hvc_execution_response));
 
@@ -230,7 +251,7 @@ struct hvc_execution_response* hvc_execution(int function, int image)
   // Empty out the read buffer. TODO perhaps we can use flush?
   char c;
 
-  while (mgos_uart_read_avail(HVC_UART_NUM))
+  while (hvc_read_bytes_available())
   {
     hvc_read_bytes(&c, 1);
   }
