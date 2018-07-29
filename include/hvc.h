@@ -7,7 +7,7 @@ extern "C" {
 
 #include "hvc_response.h"
 
-// TODO should not be defined here
+// TODO should be configurable
 #define HVC_UART_NUM 2
 
 /*
@@ -72,9 +72,17 @@ extern "C" {
 #define HVC_CMD_SET_FACE_ANGLE        0x09
 #define HVC_CMD_GET_FACE_ANGLE        0x0A
 
-// Retry definitions
+/*
+ * Retry definitions
+ */
 #define HVC_READ_RETRY_SLEEP    1000
 #define HVC_DEFAULT_READ_RETRY  5
+
+/*
+ * Image settings
+ */
+#define HVC_IMAGE_READ_BUFFER 200
+#define HVC_IMAGE_READ_SLEEP_MS 20
 
 extern int hvc_read_retry;
 
@@ -84,9 +92,9 @@ void hvc_log_info(const char* format, ...);
 
 void hvc_log_error(const char* format, ...);
 
-void hvc_read_bytes(char* data, int length);
+int hvc_read_bytes(char* data, int length);
 
-void hvc_write_bytes(char* data, int length);
+int hvc_write_bytes(char* data, int length);
 
 int hvc_read_bytes_available();
 
