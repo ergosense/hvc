@@ -125,9 +125,6 @@ struct hvc_get_version_response* hvc_get_version()
   hvc_read_bytes((char *) &res->release_version, 1);
   hvc_read_bytes(res->revision, 4);
 
-  hvc_log_info("versoin!!! %d", res->major_version);
-  hvc_log_info("versoin!!! %d", res->minor_version);
-
   return res;
 }
 
