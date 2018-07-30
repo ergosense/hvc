@@ -81,8 +81,15 @@ extern "C" {
 /*
  * Image settings
  */
-#define HVC_IMAGE_READ_BUFFER 200
-#define HVC_IMAGE_READ_SLEEP_MS 20
+#define HVC_IMAGE_READ_BUFFER 400
+#define HVC_IMAGE_READ_SLEEP_MS 10
+
+/*
+ * Temporary buffers and definitions
+ */
+#define SEND_BUFFER_SIZE    32
+#define CMD_SIZE            4
+
 
 extern int hvc_read_retry;
 

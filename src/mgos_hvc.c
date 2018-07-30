@@ -14,12 +14,10 @@
 
 #include "driver/uart.h"
 
-#define HVC_EXECUTION_INTERVAL 1000
-
-#define MGOS_HVC_LOG_BUFFER 100
-
-int boom = 0;
-
+/*
+ * Proxy logging, we don't want to redefine log functions
+ * so we use a buffer we will use to forward information to MGOS
+ */
 char log_buffer[MGOS_HVC_LOG_BUFFER];
 
 void hvc_log_debug(const char* format, ...)
@@ -129,6 +127,10 @@ static void _hvc_exec()
       }
     }
 
+    // Unset debug. We don't want images to keep dumping, just
+    // when the device boots up and does the first recognition.
+    debug = false;
+
     // Free the resource
     free(res);
 
@@ -163,6 +165,15 @@ void mgos_hvc_init()
   // that there might be previous command responses still flowing in even after
   // the system restarted.
   ESP_ERROR_CHECK(uart_flush(HVC_UART_NUM));
+
+  // Flushing doesn't seem sufficient, lets manually drain the buffer if
+  // anything is left.
+  char c;
+
+  while (hvc_read_bytes_available())
+  {
+    hvc_read_bytes(&c, 500);
+  }
 
   // Configuration variables
   int angle = mgos_sys_config_get_hvc_camera_angle();

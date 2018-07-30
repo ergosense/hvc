@@ -3,13 +3,6 @@
 #include "hvc.h"
 #include "hvc_util.h"
 
-// TODO fix all these assignments
-#define SEND_BUFFER_SIZE    32
-#define HEADER_BUFFER_SIZE  32
-#define DATA_BUFFER_SIZE    64
-#define HEADER_SIZE         6
-#define CMD_SIZE            4
-
 /*
  * @see http://components.omron.eu/getattachment/0c6ded2f-6aee-485f-a735-f9a99499c369/HVC-datasheet.pdf.aspx
  *
@@ -304,18 +297,33 @@ struct hvc_execution_response* hvc_execution(int function, int image)
     const char* filepath = "/debug.img";
 
     FILE *fp;
-    if (!(fp = fopen(filepath,"wb")))
+    if (!(fp = fopen(filepath, "wb")))
     {
       hvc_log_error("Unable to open file path: %d", filepath);
     }
 
+    // Write dimensions as first 4 bytes
+    if (fp) fwrite(xy, 1, sizeof(xy), fp);
+
     // Set up image buffer
     int available = 0;
+    int retry = 0;
     char c[HVC_IMAGE_READ_BUFFER];
 
     // Drain the rest of the buffer and save image
-    while ((available = hvc_read_bytes_available()))
+    while (size > 0 && retry < hvc_read_retry)
     {
+      // Wait for HVC to send more data, retry a few times before
+      // we decide it's pointless and just give up.
+      if (!(available = hvc_read_bytes_available()))
+      {
+        retry++;
+        continue;
+      }
+
+      // Reset the retry
+      retry = 0;
+
       hvc_log_info("Reading available image data: %d", available);
       int image_read = hvc_read_bytes(c, HVC_IMAGE_READ_BUFFER);
       size -= image_read;
@@ -325,8 +333,6 @@ struct hvc_execution_response* hvc_execution(int function, int image)
 
       vTaskDelay(HVC_IMAGE_READ_SLEEP_MS / portTICK_RATE_MS);
     }
-
-    hvc_log_info("Data read: %d", size);
 
     // Check for missing bytes, this could've happened because of buffer overflow
     // or just slow processing.
