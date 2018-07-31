@@ -18,7 +18,7 @@ extern "C" {
 /*
  * Define how often we will attempt to detect humans
  */
-#define HVC_EXECUTION_INTERVAL 1000
+#define HVC_EXECUTION_INTERVAL 100
 
 /*
  * Proxy log buffer size. Messages can't exceed this
