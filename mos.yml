@@ -11,6 +11,8 @@ includes:
 config_schema:
   - [ "hvc", "o", { "title": "HVC settings" }]
   - [ "hvc.baudrate", "i", 9600, { "title": "Connection baudrate" }]
+  - [ "hvc.rx", "i", 16, { "title": "RX pin" }]
+  - [ "hvc.tx", "i", 17, { "title": "TX pin" }]
   - [ "hvc.camera_angle", "i", 0, { "title": "Camera angle (default 0 degrees)" }]
   - [ "hvc.thresholds", "o", { "title": "Threshold settings" }]
   - [ "hvc.thresholds.body", "i", 600, { "title": "Body threshold" }]

@@ -8,11 +8,9 @@ extern "C" {
 #include "mgos.h"
 
 /*
- * Define the UART RX/TX pins and the RX buffer.
+ * Define the RX buffer.
  * TX needs no buffer as we will wait/block until command has sent.
  */
-#define MGOS_HVC_RX_PIN 16
-#define MGOS_HVC_TX_PIN 17
 #define HVC_UART_BUFFER_SIZE 4096
 
 /*

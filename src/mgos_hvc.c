@@ -152,8 +152,11 @@ void mgos_hvc_init()
     .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
   };
 
+  int rx = mgos_sys_config_get_hvc_rx();
+  int tx = mgos_sys_config_get_hvc_tx();
+
   ESP_ERROR_CHECK(uart_param_config(HVC_UART_NUM, &uart_config));
-  ESP_ERROR_CHECK(uart_set_pin(HVC_UART_NUM, MGOS_HVC_TX_PIN, MGOS_HVC_RX_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+  ESP_ERROR_CHECK(uart_set_pin(HVC_UART_NUM, tx, rx, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
   ESP_ERROR_CHECK(uart_driver_install(HVC_UART_NUM, HVC_UART_BUFFER_SIZE, 0, 0, NULL, 0));
 
   // Don't attempt to retry these first connections, if they can't complete
